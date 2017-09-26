@@ -1,10 +1,7 @@
 package io.yorkecao.jwtauth.shiro;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.JWTCreator;
-import com.auth0.jwt.JWTVerifier;
-import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.DecodedJWT;
+import io.yorkecao.jwtauth.common.JwtUtils;
+import io.yorkecao.jwtauth.config.JwtAuthConfing;
 import org.apache.shiro.subject.PrincipalCollection;
 import org.apache.shiro.subject.SimplePrincipalCollection;
 import org.apache.shiro.subject.Subject;
@@ -17,12 +14,12 @@ import org.apache.shiro.web.subject.WebSubjectContext;
 import org.apache.shiro.web.util.WebUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.UnsupportedEncodingException;
-import java.util.Date;
 
 /**
  * @author Yorke
@@ -30,20 +27,12 @@ import java.util.Date;
 public class JwtRememberMeManager extends CookieRememberMeManager {
     private static final transient Logger logger = LoggerFactory.getLogger(JwtRememberMeManager.class);
 
+    @Autowired
+    private JwtAuthConfing jwtAuthConfing;
+
     @Override
     protected void rememberIdentity(Subject subject, PrincipalCollection accountPrincipals) {
-        String jwtStr = "";
-        try {
-            Algorithm algorithm = Algorithm.HMAC256("test");
-            JWTCreator.Builder builder = JWT.create()
-                    .withIssuer("yorke")
-                    .withIssuedAt(new Date())
-                    .withClaim("username", (String) accountPrincipals.getPrimaryPrincipal());
-            jwtStr = builder.sign(algorithm);
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        }
-
+        String jwtStr = JwtUtils.signJwt((String) accountPrincipals.getPrimaryPrincipal(), jwtAuthConfing.getSecret());
         this.rememberJwtIdentity(subject, jwtStr);
     }
 
@@ -69,15 +58,9 @@ public class JwtRememberMeManager extends CookieRememberMeManager {
         PrincipalCollection principals = null;
         try {
             String jwtStr = getRememberedJwtIdentity(subjectContext);
-            //SHIRO-138 - only call convertBytesToPrincipals if bytes exist:
             if (jwtStr != null && jwtStr.length() > 0) {
-                Algorithm algorithm = Algorithm.HMAC256("test");
-                JWTVerifier verifier = JWT.require(algorithm)
-                        .withIssuer("yorke")
-                        .build();
-                DecodedJWT jwt = verifier.verify(jwtStr);
-
-                principals = new SimplePrincipalCollection(jwt.getClaim("username").asString(), CustomRealm.class.getName());
+                String username = JwtUtils.verifyJwt(jwtStr, jwtAuthConfing.getSecret());
+                principals = new SimplePrincipalCollection(username, CustomRealm.class.getName());
             }
         } catch (RuntimeException re) {
             principals = onRememberedPrincipalFailure(re, subjectContext);
